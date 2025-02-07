@@ -11,6 +11,10 @@ MPI = 1
 MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 EXAMINIMD_PATH = $(subst Makefile,,$(MAKEFILE_PATH))/..
 
+PWRAPI_PATH= $(HOME)/pwrapi-ref/install
+PWRAPI_LIB = $(PWRAPI_PATH)/lib
+PWRAPI_INC = $(PWRAPI_PATH)/include
+
 default: build
 	echo "Start Build"
 
@@ -18,6 +22,8 @@ default: build
 EXE = ExaMiniMD
 CXXFLAGS = -O3 -g
 LINKFLAGS = -O3 -g
+CXXFLAGS += -I$(PWRAPI_INC)
+LINKFLAGS += -L$(PWRAPI_LIB) -lpwr
 
 ifeq ($(MPI), 1)
   CXX = mpicxx
@@ -70,7 +76,7 @@ include $(KOKKOS_PATH)/Makefile.kokkos
 build: $(EXE)
 
 $(EXE): $(OBJ) $(KOKKOS_LINK_DEPENDS)
-	$(LINK) $(KOKKOS_LDFLAGS) $(LINKFLAGS) $(EXTRA_PATH) $(OBJ) $(KOKKOS_LIBS) $(LIB) -o $(EXE)
+	$(LINK) $(KOKKOS_LDFLAGS) $(LINKFLAGS) $(EXTRA_PATH) $(OBJ) $(KOKKOS_LIBS) $(LIB) $(PWRAPI_LIB)/libpwr.so -o $(EXE)
 
 clean: kokkos-clean 
 	rm -f *.o $(EXE)
