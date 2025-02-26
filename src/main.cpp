@@ -50,10 +50,6 @@
 #include "mpi.h"
 #endif
 
-// To run:
-//
-// source /path/to/pwrapi-ref/examples/script/xml_profile
-// ./ExaMiniMD
 char* myctime(const time_t *timep)
 {
     char* tmp = ctime(timep);

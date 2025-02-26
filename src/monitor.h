@@ -38,16 +38,19 @@ public:
     ~PowerMonitor();
 
     // Get instantaneous power/energy value
-    void logData(const std::string &label, bool debugMode = false);
+    void logData(const std::string &label);
 
     // Start state-based power tracking
     void startStatTracking(const std::string &label);
 
     // Stop state-based power tracking
-    void stopStatTracking(bool debugMode = false);
+    void stopStatTracking();
 
     // Print the monitoring report
     void report();
+
+    // Export logs to a file
+    void exportLogs(const std::string &fileName = "power_monitor.log");
 
 private:
     PWR_Cntxt cntxt;
@@ -57,6 +60,10 @@ private:
     std::vector<std::string> statLabels;
     std::vector<LogEntry> logEntries;
     std::chrono::high_resolution_clock::time_point startTime, endTime;
+
+    bool debugMode;
+    bool exportData;
+    bool getEnvBool(const std::string &envVar, bool defaultVal = 0);
 };
 
 #endif // MONITOR_H

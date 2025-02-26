@@ -5,14 +5,29 @@ PowerMonitor::PowerMonitor() {
     PWR_CntxtInit(PWR_CNTXT_DEFAULT, PWR_ROLE_APP, "ExaMiniMD", &cntxt);
     PWR_CntxtGetEntryPoint(cntxt, &self);
     startTime = std::chrono::high_resolution_clock::now();
+
+    debugMode = getEnvBool("PWRAPI_DEBUG");
+    exportData = getEnvBool("PWRAPI_EXPORT_DATA");
 }
 
 PowerMonitor::~PowerMonitor() {
+    if (exportData) exportLogs();
     report();
+
     PWR_CntxtDestroy(cntxt);
 }
 
-void PowerMonitor::logData(const std::string &label, bool debugMode) {
+bool PowerMonitor::getEnvBool(const std::string &envVar, bool defaultVal) {
+    const char* val = std::getenv(envVar.c_str());
+    if (val == nullptr) return defaultVal;
+    
+    if (debugMode)
+        printf("[INFO     ] Environment variable %s set to %d by the user\n", envVar.c_str(), std::atoi(val));
+
+    return (std::string(val) == "1");
+}
+
+void PowerMonitor::logData(const std::string &label) {
     LogEntry logEntry;
 
     logEntry.isStat = false;
@@ -46,11 +61,9 @@ void PowerMonitor::startStatTracking(const std::string &label) {
 
     statStack.push_back(stat);
     statLabels.push_back(label);
-
-    // printf("# Started power statistics tracking for %s...\n", label.c_str());
 }
 
-void PowerMonitor::stopStatTracking(bool debugMode) {
+void PowerMonitor::stopStatTracking() {
     if (statStack.empty()) {
         printf("[WARN     ] No active stat tracking session to stop\n");
         return;
@@ -102,4 +115,33 @@ void PowerMonitor::report() {
                    entry.label.c_str(), entry.values.power, entry.values.energy, entry.values.frequency, entry.values.voltage, entry.time);
         }
     }
+}
+
+void PowerMonitor::exportLogs(const std::string &fileName) {
+    FILE* logFile = fopen(fileName.c_str(), "w");
+    if (!logFile) {
+        printf("[WARN     ] Could not open log file %s\n", fileName.c_str());
+        return;
+    }
+
+    fprintf(logFile, "# Power Monitoring Log\n");
+    fprintf(logFile, "#---------------------------------------------------------------------------------------------------------\n");
+    fprintf(logFile, "# %-10s | %-20s | %-6s | %-10s | %-15s | %-15s | %-10s \n",
+            "Time(s)", "Label", "Type", "Power(W)", "Energy(J)", "Frequency(Hz)", "Voltage(V)");
+    fprintf(logFile, "#---------------------------------------------------------------------------------------------------------\n");
+
+    for (const auto &entry : logEntries) {
+        char buffer[256];
+        if (entry.isStat) {
+            sprintf(buffer, "  %-10.4f | %-20s | %-6s | %-10.2f | %-15.2f | %-15s | %-10s\n",
+                entry.time, entry.label.c_str(), "STAT", entry.values.power, entry.values.energy, "-", "-");
+        } else {
+            sprintf(buffer, "  %-10.4f | %-20s | %-6s | %-10.2f | %-15.2f | %-15.2f | %-10.2f\n",
+                entry.time, entry.label.c_str(), "INST", entry.values.power, entry.values.energy, entry.values.frequency, entry.values.voltage);
+        }
+        fprintf(logFile, "%s", buffer);
+    }
+
+    fclose(logFile);
+    printf("[INFO     ] Power montitoring logs saved to %s\n", fileName.c_str());
 }
