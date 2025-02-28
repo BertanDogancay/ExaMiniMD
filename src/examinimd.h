@@ -45,7 +45,7 @@
 #include<comm.h>
 #include<input.h>
 #include<binning.h>
-#include <monitor.h>
+#include<pwrapi.h>
 
 class ExaMiniMD {
   public:

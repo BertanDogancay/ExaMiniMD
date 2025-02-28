@@ -188,11 +188,11 @@ void ExaMiniMD::run(int nsteps) {
   double last_time;
   Kokkos::Timer timer,force_timer,comm_timer,neigh_timer,other_timer;
 
-  PowerMonitor powerMonitor;
+  PwrAPI pwrApi;
 
   // Timestep Loop
   for(int step = 1; step <= nsteps; step++ ) {
-    powerMonitor.logData("Run Loop");
+    CHECK_PWR_FUNC_CALL(pwrApi.getPowerAttr("Run Loop"));
 
     // Do first part of the verlet time step integration
     other_timer.reset();

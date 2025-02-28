@@ -67,6 +67,11 @@ SRC += $(wildcard $(EXAMINIMD_PATH)/src/binning_types/*.cpp)
 HEADERS += $(wildcard $(EXAMINIMD_PATH)/src/binning_types/*.h)
 CXXFLAGS += -I$(EXAMINIMD_PATH)/src/binning_types
 
+vpath %.cpp $(EXAMINIMD_PATH)/src/pwrapi
+SRC += $(wildcard $(EXAMINIMD_PATH)/src/pwrapi/*.cpp)
+HEADERS += $(wildcard $(EXAMINIMD_PATH)/src/pwrapi/*.h)
+CXXFLAGS += -I$(EXAMINIMD_PATH)/src/pwrapi
+
 SRC_NOTDIR = $(notdir $(SRC))
 OBJ = $(SRC_NOTDIR:.cpp=.o)
 LIB =

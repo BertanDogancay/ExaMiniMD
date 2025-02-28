@@ -1,5 +1,5 @@
-#ifndef MONITOR_H
-#define MONITOR_H
+#ifndef PWR_API_H
+#define PWR_API_H
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,13 +8,14 @@
 #include <chrono>
 
 #include <pwr.h>
+#include "errcode.h"
 
-enum PowerDataType {
-    POWER_DATA_TYPE_POWER,
-    POWER_DATA_TYPE_ENERGY,
-    POWER_DATA_TYPE_FREQUENCY,
-    POWER_DATA_TYPE_VOLTAGE,
-    POWER_NUM_DATA_TYPES
+enum PwrAPIType_t {
+    PWRAPI_TYPE_POWER,
+    PWRAPI_TYPE_ENERGY,
+    PWRAPI_TYPE_FREQUENCY,
+    PWRAPI_TYPE_VOLTAGE,
+    PWRAPI_NUM_TYPES
 };
 
 struct LogEntry {
@@ -29,28 +30,37 @@ struct LogEntry {
     bool isStat;
 };
 
-class PowerMonitor {
+class PwrAPI {
 public:
     // Constructor
-    PowerMonitor();
+    PwrAPI();
 
     // Deconstructor
-    ~PowerMonitor();
+    ~PwrAPI();
 
     // Get instantaneous power/energy value
-    void logData(const std::string &label);
+    PwrErrCode getPowerAttr(const std::string &label);
 
     // Start state-based power tracking
-    void startStatTracking(const std::string &label);
+    PwrErrCode startStatTracking(const std::string &label);
 
     // Stop state-based power tracking
-    void stopStatTracking();
+    PwrErrCode stopStatTracking();
+
+    // Set power attr
+    PwrErrCode setPowerAttr(PwrAPIType_t type, double val);
+
+    // Export logs to a file
+    PwrErrCode exportLogs(const std::string &fileName = "power_monitor.log");
+
+    // Clear all the stored logs
+    void clearLogs();
 
     // Print the monitoring report
     void report();
 
-    // Export logs to a file
-    void exportLogs(const std::string &fileName = "power_monitor.log");
+    // Convert PWRAPI attr type to tring
+    std::string typeToString(PwrAPIType_t type);
 
 private:
     PWR_Cntxt cntxt;
@@ -66,4 +76,4 @@ private:
     bool getEnvBool(const std::string &envVar, bool defaultVal = 0);
 };
 
-#endif // MONITOR_H
+#endif // PWR_API_H
