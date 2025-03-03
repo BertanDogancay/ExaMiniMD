@@ -10,6 +10,8 @@
 #include <pwr.h>
 #include "errcode.h"
 
+#define CPU_FREQ_PATH "/sys/devices/system/cpu/"
+
 enum PwrAPIType_t {
     PWRAPI_TYPE_POWER,
     PWRAPI_TYPE_ENERGY,
@@ -21,10 +23,10 @@ enum PwrAPIType_t {
 struct LogEntry {
     std::string label;
     struct {
-        double power;
-        double energy;
-        double frequency;
-        double voltage;
+        double power = 0.0;
+        double energy = 0.0;
+        double frequency = 0.0;
+        double voltage = 0.0;
     } values;
     double time;
     bool isStat;
@@ -74,6 +76,16 @@ private:
     bool debugMode;
     bool exportData;
     bool getEnvBool(const std::string &envVar, bool defaultVal = 0);
+
+    // Helper function to write to CPU sysfs
+    PwrErrCode writeToCpuSysfs(const char *filename, const char *val);
+
+    // Read CPU frequency (avg all cores)
+    PwrErrCode getAvgCpuFreq(double *avgFreq);
+
+    // Set CPU frequency (all cores)
+    // freq == 0 to reset
+    PwrErrCode setCpuFreq(double freq);
 };
 
 #endif // PWR_API_H

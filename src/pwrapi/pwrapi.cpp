@@ -1,5 +1,6 @@
 #include "pwrapi.h"
 #include <cassert>
+#include <dirent.h>
 
 PwrAPI::PwrAPI() {
     PWR_CntxtInit(PWR_CNTXT_DEFAULT, PWR_ROLE_APP, "ExaMiniMD", &cntxt);
@@ -27,6 +28,85 @@ bool PwrAPI::getEnvBool(const std::string &envVar, bool defaultVal) {
     return (std::string(val) == "1");
 }
 
+PwrErrCode PwrAPI::writeToCpuSysfs(const char *filename, const char *val) {
+    char path[256];
+    struct dirent *entry;
+    DIR *dir = opendir(CPU_FREQ_PATH);
+
+    if (!dir) {
+        PWR_ERROR("Failed to open CPU directory.\n");
+        return PWR_FAIL;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, "cpu", 3) == 0 && isdigit(entry->d_name[3])) {
+            snprintf(path, sizeof(path), "%s%s/cpufreq/%s", CPU_FREQ_PATH, entry->d_name, filename);
+            FILE *file = fopen(path, "w");
+            if (file) {
+                fprintf(file, "%s", val);
+                fclose(file);
+            } else {
+                PWR_ERROR("Failed to write to sysfs file.\n");
+                return PWR_FAIL;
+            }
+        }
+    }
+    closedir(dir);
+    return PWR_SUCCESS;
+}
+
+PwrErrCode PwrAPI::getAvgCpuFreq(double *avgFreq) {
+    char path[256];
+    struct dirent *entry;
+    DIR *dir = opendir(CPU_FREQ_PATH);
+
+    if (!dir) {
+        PWR_ERROR("Failed to open CPU directory.\n");
+        return PWR_FAIL;
+    }
+
+    long totalFreq = 0;
+    int coreCount = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, "cpu", 3) == 0 && isdigit(entry->d_name[3])) {
+            snprintf(path, sizeof(path), "%s%s/cpufreq/scaling_cur_freq", CPU_FREQ_PATH, entry->d_name);
+            FILE *file = fopen(path, "r");
+            if (file) {
+                int freq;
+                if (fscanf(file, "%d", &freq) == 1) {
+                    totalFreq += freq;
+                    coreCount++;
+                }
+                fclose(file);
+            } else {
+                PWR_ERROR("Failed to read from file: %s.\n", path);
+                return PWR_FAIL;
+            }
+        }
+    }
+    closedir(dir);
+
+    if (coreCount > 0) *avgFreq = totalFreq / coreCount;
+
+    return PWR_SUCCESS;
+}
+
+PwrErrCode PwrAPI::setCpuFreq(double freq_ghz) {
+    if (freq_ghz == 0) {
+        CHECK_PWR_FUNC_CALL(writeToCpuSysfs("scaling_governor", "ondemand"));
+    } else if (freq_ghz > 1) {
+        char freqStr[32];
+        snprintf(freqStr, sizeof(freqStr), "%d", (int)(freq_ghz*1e6));
+        CHECK_PWR_FUNC_CALL(writeToCpuSysfs("scaling_governor", "userspace"));
+        CHECK_PWR_FUNC_CALL(writeToCpuSysfs("scaling_setspeed", freqStr));
+    } else {
+        PWR_ERROR("Invalid CPU frequency value: %lf GHz < 1.0 GHz\n", freq_ghz);
+        return PWR_FAIL;
+    }
+
+    return PWR_SUCCESS;
+}
+
 PwrErrCode PwrAPI::getPowerAttr(const std::string &label) {
     LogEntry logEntry;
 
@@ -36,6 +116,7 @@ PwrErrCode PwrAPI::getPowerAttr(const std::string &label) {
     //CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_POWER, &logEntry.values.power, &ts));
     CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_ENERGY, &logEntry.values.energy, &ts));
     //CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_FREQ, &logEntry.values.frequency, &ts));
+    CHECK_PWR_FUNC_CALL(getAvgCpuFreq(&logEntry.values.frequency));
     //CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_VOLTAGE, &logEntry.values.voltage, &ts));
 
     auto timestamp = std::chrono::high_resolution_clock::now();
@@ -45,7 +126,7 @@ PwrErrCode PwrAPI::getPowerAttr(const std::string &label) {
     logEntries.push_back(logEntry);
 
     if (debugMode) {
-        PWR_INFO("%s - Type: INST Power: %lf (W) Energy: %lf (J) Frequency: %lf (Hz) Voltage: %lf (V) Time: %lf (s)\n", label.c_str(), logEntry.values.power, 
+        PWR_INFO("%s - Type: INST Power: %lf (W) Energy: %lf (J) Frequency: %lf (KHz) Voltage: %lf (V) Time: %lf (s)\n", label.c_str(), logEntry.values.power, 
             logEntry.values.energy, logEntry.values.frequency, logEntry.values.voltage, logEntry.time);
     }
 
@@ -114,7 +195,8 @@ PwrErrCode PwrAPI::setPowerAttr(PwrAPIType_t type, double val) {
             CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_POWER_LIMIT_MAX, &val));
             break;
         case PWRAPI_TYPE_FREQUENCY:
-            CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_FREQ, &val));
+            // CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_FREQ, &val));
+            CHECK_PWR_FUNC_CALL(setCpuFreq(val));
             break;
         case PWRAPI_TYPE_VOLTAGE:
             CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_VOLTAGE, &val));
@@ -141,7 +223,7 @@ PwrErrCode PwrAPI::exportLogs(const std::string &fileName) {
     fprintf(logFile, "# Power Monitoring Log\n");
     fprintf(logFile, "#---------------------------------------------------------------------------------------------------------\n");
     fprintf(logFile, "# %-10s | %-20s | %-6s | %-10s | %-15s | %-15s | %-10s \n",
-            "Time(s)", "Label", "Type", "Power(W)", "Energy(J)", "Frequency(Hz)", "Voltage(V)");
+            "Time(s)", "Label", "Type", "Power(W)", "Energy(J)", "Frequency(KHz)", "Voltage(V)");
     fprintf(logFile, "#---------------------------------------------------------------------------------------------------------\n");
 
     for (const auto &entry : logEntries) {
@@ -176,7 +258,7 @@ void PwrAPI::report() {
             printf("[INFO     ] %s - Avg Power: %lf (W) Avg Energy: %lf (J) Time: %lf (s)\n", 
                    entry.label.c_str(), entry.values.power, entry.values.energy, entry.time);
         } else {
-            printf("[INFO     ] %s - Power: %lf (W) Energy: %lf (J) Frequency: %lf (Hz) Voltage: %lf (V) Time: %lf (s)\n", 
+            printf("[INFO     ] %s - Power: %lf (W) Energy: %lf (J) Frequency: %lf (KHz) Voltage: %lf (V) Time: %lf (s)\n", 
                    entry.label.c_str(), entry.values.power, entry.values.energy, entry.values.frequency, entry.values.voltage, entry.time);
         }
     }
@@ -190,7 +272,7 @@ std::string PwrAPI::typeToString(PwrAPIType_t type) {
         case PWRAPI_TYPE_ENERGY:
             return "Energy (J)";
         case PWRAPI_TYPE_FREQUENCY:
-            return "Frequency (Hz)";
+            return "Frequency (KHz)";
         case PWRAPI_TYPE_VOLTAGE:
             return "Voltage (V)";
         default:

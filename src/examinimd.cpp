@@ -190,6 +190,8 @@ void ExaMiniMD::run(int nsteps) {
 
   PwrAPI pwrApi;
 
+  pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 2.0);
+
   // Timestep Loop
   for(int step = 1; step <= nsteps; step++ ) {
     CHECK_PWR_FUNC_CALL(pwrApi.getPowerAttr("Run Loop"));
@@ -294,6 +296,9 @@ void ExaMiniMD::run(int nsteps) {
       printf("Loop time of %f on %i procs for %i steps with %i atoms\n",time,comm->num_processes(),nsteps,system->N);
     }
   }
+
+  // To reset power
+  pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 0);
 }
 
 void ExaMiniMD::dump_binary(int step) {

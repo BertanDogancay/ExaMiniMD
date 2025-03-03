@@ -17,7 +17,7 @@ typedef enum : int {
         int status = func;                                \
         if (status != PWR_RET_SUCCESS)                    \
         {                                                 \
-            PWR_ERROR("Error in call %s\n", #func);       \
+            PWR_ERROR("Call %s\n", #func);                \
             RESULT(PWR_FAIL, ##RESULT_ARGS);              \
         }                                                 \
     } while (false)
@@ -29,6 +29,6 @@ typedef enum : int {
         PwrErrCode status = func;                              \
         if (status != PWR_SUCCESS)                             \
         {                                                      \
-            PWR_ERROR("Error in function call: %s\n", #func);  \
+            PWR_ERROR("Function call: %s\n", #func);           \
         }                                                      \
     } while (false)
