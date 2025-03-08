@@ -28,6 +28,17 @@ bool PwrAPI::getEnvBool(const std::string &envVar, bool defaultVal) {
     return (std::string(val) == "1");
 }
 
+void PwrAPI::selectCpus(int *cpuList, int count) {
+    for (int i = 0; i < count; i++) {
+        if (!cpuList) {
+            cpuMask[i] = 1;
+        } else if (cpuList[i] < MAX_CPUS) {
+            // Enable CPU for modification
+            cpuMask[cpuList[i]] = 1;
+        }
+    }
+}
+
 PwrErrCode PwrAPI::writeToCpuSysfs(const char *filename, const char *val) {
     char path[256];
     struct dirent *entry;
@@ -40,14 +51,22 @@ PwrErrCode PwrAPI::writeToCpuSysfs(const char *filename, const char *val) {
 
     while ((entry = readdir(dir)) != NULL) {
         if (strncmp(entry->d_name, "cpu", 3) == 0 && isdigit(entry->d_name[3])) {
-            snprintf(path, sizeof(path), "%s%s/cpufreq/%s", CPU_FREQ_PATH, entry->d_name, filename);
-            FILE *file = fopen(path, "w");
-            if (file) {
-                fprintf(file, "%s", val);
-                fclose(file);
-            } else {
-                PWR_ERROR("Failed to write to sysfs file.\n");
-                return PWR_FAIL;
+            int cpuId = atoi(entry->d_name+3);
+            if (cpuId < MAX_CPUS && cpuMask[cpuId]) {
+                snprintf(path, sizeof(path), "%s%s/cpufreq/%s", CPU_FREQ_PATH, entry->d_name, filename);
+                FILE *file = fopen(path, "w");
+                if (file) {
+                    fprintf(file, "%s", val);
+                    fclose(file);
+                } else {
+                    PWR_ERROR("Failed to write to sysfs file.\n");
+                    return PWR_FAIL;
+                }
+                
+                cpuMask[cpuId] = 0;
+
+                if (debugMode)
+                    PWR_INFO("Setting frequency to %s for core %d.\n", val, cpuId);
             }
         }
     }
@@ -69,11 +88,13 @@ PwrErrCode PwrAPI::getAvgCpuFreq(double *avgFreq) {
     int coreCount = 0;
     while ((entry = readdir(dir)) != NULL) {
         if (strncmp(entry->d_name, "cpu", 3) == 0 && isdigit(entry->d_name[3])) {
+            int cpuId = atoi(entry->d_name+3);
             snprintf(path, sizeof(path), "%s%s/cpufreq/scaling_cur_freq", CPU_FREQ_PATH, entry->d_name);
             FILE *file = fopen(path, "r");
             if (file) {
                 int freq;
                 if (fscanf(file, "%d", &freq) == 1) {
+                    if (debugMode) PWR_INFO("Reading frequency for core: %d -> %d.\n", cpuId, freq);
                     totalFreq += freq;
                     coreCount++;
                 }
@@ -91,13 +112,17 @@ PwrErrCode PwrAPI::getAvgCpuFreq(double *avgFreq) {
     return PWR_SUCCESS;
 }
 
-PwrErrCode PwrAPI::setCpuFreq(double freq_ghz) {
+PwrErrCode PwrAPI::setCpuFreq(double freq_ghz, int *cpuList, int cpuCount) {
+    if (!cpuList || cpuCount == 0) cpuCount = MAX_CPUS;
     if (freq_ghz == 0) {
+        selectCpus(cpuList, cpuCount);
         CHECK_PWR_FUNC_CALL(writeToCpuSysfs("scaling_governor", "ondemand"));
-    } else if (freq_ghz > 1) {
+    } else if (freq_ghz >= 1) {
         char freqStr[32];
         snprintf(freqStr, sizeof(freqStr), "%d", (int)(freq_ghz*1e6));
+        selectCpus(cpuList, cpuCount);
         CHECK_PWR_FUNC_CALL(writeToCpuSysfs("scaling_governor", "userspace"));
+        selectCpus(cpuList, cpuCount);
         CHECK_PWR_FUNC_CALL(writeToCpuSysfs("scaling_setspeed", freqStr));
     } else {
         PWR_ERROR("Invalid CPU frequency value: %lf GHz < 1.0 GHz\n", freq_ghz);
@@ -115,6 +140,7 @@ PwrErrCode PwrAPI::getPowerAttr(const std::string &label) {
 
     //CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_POWER, &logEntry.values.power, &ts));
     CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_ENERGY, &logEntry.values.energy, &ts));
+    logEntry.values.energy -= 200000000; // Substract constant value
     //CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_FREQ, &logEntry.values.frequency, &ts));
     CHECK_PWR_FUNC_CALL(getAvgCpuFreq(&logEntry.values.frequency));
     //CHECK_PWR_CALL(PWR_ObjAttrGetValue(self, PWR_ATTR_VOLTAGE, &logEntry.values.voltage, &ts));
@@ -122,6 +148,9 @@ PwrErrCode PwrAPI::getPowerAttr(const std::string &label) {
     auto timestamp = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = timestamp - startTime;
     logEntry.time = duration.count();
+
+    // Calculate power manually from energy value
+    logEntry.values.power = logEntry.values.energy / logEntry.time;
 
     logEntries.push_back(logEntry);
 
@@ -189,14 +218,14 @@ PwrErrCode PwrAPI::stopStatTracking() {
     return PWR_SUCCESS;
 }
 
-PwrErrCode PwrAPI::setPowerAttr(PwrAPIType_t type, double val) {
+PwrErrCode PwrAPI::setPowerAttr(PwrAPIType_t type, double val, int* cpuList, int cpuCount) {
     switch (type) {
         case PWRAPI_TYPE_POWER:
             CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_POWER_LIMIT_MAX, &val));
             break;
         case PWRAPI_TYPE_FREQUENCY:
             // CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_FREQ, &val));
-            CHECK_PWR_FUNC_CALL(setCpuFreq(val));
+            CHECK_PWR_FUNC_CALL(setCpuFreq(val, cpuList, cpuCount));
             break;
         case PWRAPI_TYPE_VOLTAGE:
             CHECK_PWR_CALL(PWR_ObjAttrSetValue(self, PWR_ATTR_VOLTAGE, &val));
@@ -206,7 +235,7 @@ PwrErrCode PwrAPI::setPowerAttr(PwrAPIType_t type, double val) {
             return PWR_FAIL;
     }
 
-    if (debugMode) {
+    if (debugMode && type != PWRAPI_TYPE_FREQUENCY) {
         PWR_INFO("%s set to %lf\n", typeToString(type).c_str(), val);
     }
 
@@ -252,7 +281,8 @@ void PwrAPI::clearLogs() {
 }
 
 void PwrAPI::report() {
-    printf("\n# Energy Usage Log:\n");
+    printf("\n\n# Energy Usage Log:\n");
+    printf("#---------------------------------------------------------------------------------------------------------\n");
     for (const auto& entry : logEntries) {
         if (entry.isStat) {
             printf("[INFO     ] %s - Avg Power: %lf (W) Avg Energy: %lf (J) Time: %lf (s)\n", 

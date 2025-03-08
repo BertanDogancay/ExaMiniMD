@@ -190,7 +190,11 @@ void ExaMiniMD::run(int nsteps) {
 
   PwrAPI pwrApi;
 
-  pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 2.0);
+  CHECK_PWR_FUNC_CALL(pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 4.0));
+
+  int selectedCpus[] = {10, 11, 12};
+  int cpuCount = sizeof(selectedCpus) / sizeof(selectedCpus[0]); // can also hardcode this value
+  CHECK_PWR_FUNC_CALL(pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 2.0, selectedCpus, cpuCount));
 
   // Timestep Loop
   for(int step = 1; step <= nsteps; step++ ) {
@@ -298,7 +302,7 @@ void ExaMiniMD::run(int nsteps) {
   }
 
   // To reset power
-  pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 0);
+  CHECK_PWR_FUNC_CALL(pwrApi.setPowerAttr(PWRAPI_TYPE_FREQUENCY, 0));
 }
 
 void ExaMiniMD::dump_binary(int step) {

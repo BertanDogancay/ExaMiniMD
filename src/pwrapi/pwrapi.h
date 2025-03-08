@@ -11,6 +11,7 @@
 #include "errcode.h"
 
 #define CPU_FREQ_PATH "/sys/devices/system/cpu/"
+#define MAX_CPUS 128
 
 enum PwrAPIType_t {
     PWRAPI_TYPE_POWER,
@@ -50,7 +51,7 @@ public:
     PwrErrCode stopStatTracking();
 
     // Set power attr
-    PwrErrCode setPowerAttr(PwrAPIType_t type, double val);
+    PwrErrCode setPowerAttr(PwrAPIType_t type, double val, int *cpuList = nullptr, int cpuCount = 0);
 
     // Export logs to a file
     PwrErrCode exportLogs(const std::string &fileName = "power_monitor.log");
@@ -73,9 +74,14 @@ private:
     std::vector<LogEntry> logEntries;
     std::chrono::high_resolution_clock::time_point startTime, endTime;
 
+    char cpuMask[MAX_CPUS] = {0};
+
     bool debugMode;
     bool exportData;
     bool getEnvBool(const std::string &envVar, bool defaultVal = 0);
+
+    // Helper function for cpu mask
+    void selectCpus(int* cpuList, int count);
 
     // Helper function to write to CPU sysfs
     PwrErrCode writeToCpuSysfs(const char *filename, const char *val);
@@ -85,7 +91,7 @@ private:
 
     // Set CPU frequency (all cores)
     // freq == 0 to reset
-    PwrErrCode setCpuFreq(double freq);
+    PwrErrCode setCpuFreq(double freq, int *cpuList, int cpuCount);
 };
 
 #endif // PWR_API_H
